@@ -14,6 +14,7 @@
 #include <zmk/behavior.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/layer_state_changed.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -247,6 +248,34 @@ static const struct zmk_input_processor_driver_api temp_layer_driver_api = {
     .handle_event = temp_layer_handle_event,
 };
 
+#define TEMP_LAYER_LAYER_LISTENER(n)                                                               \
+    static int handle_layer_state_change_##n(const zmk_event_t *eh) {                              \
+        if (as_zmk_layer_state_changed(eh) == NULL) {                                              \
+            LOG_DBG("Dispatching handle_position_state_changed");                                  \
+            return ZMK_EV_EVENT_BUBBLE;                                                            \
+        }                                                                                          \
+        const struct device *dev = DEVICE_DT_INST_GET(n);                                          \
+        struct temp_layer_data *data = (struct temp_layer_data *)dev->data;                        \
+        int ret = k_mutex_lock(&data->lock, K_FOREVER);                                            \
+        if (ret < 0) {                                                                             \
+            return ret;                                                                            \
+        }                                                                                          \
+        if (data->state.toggle_layer == 0) {                                                       \
+            return ZMK_EV_EVENT_BUBBLE;                                                            \
+        }                                                                                          \
+        if (!zmk_keymap_layer_active(zmk_keymap_layer_index_to_id(data->state.toggle_layer))) {    \
+            data->state.is_active = false;                                                         \
+            k_work_cancel_delayable(&layer_disable_works[data->state.toggle_layer]);               \
+        }                                                                                          \
+        ret = k_mutex_unlock(&data->lock);                                                         \
+        if (ret < 0) {                                                                             \
+            return ret;                                                                            \
+        }                                                                                          \
+        return ZMK_EV_EVENT_BUBBLE;                                                                \
+    }                                                                                              \
+    ZMK_LISTENER(processor_temp_layer_layer_##n, handle_layer_state_change_##n);                   \
+    ZMK_SUBSCRIPTION(processor_temp_layer_layer_##n, zmk_layer_state_changed)
+
 /* Event Listeners Conditions */
 #define NEEDS_POSITION_HANDLERS(n, ...) DT_INST_PROP_HAS_IDX(n, excluded_positions, 0)
 #define NEEDS_KEYCODE_HANDLERS(n, ...) (DT_INST_PROP_OR(n, require_prior_idle_ms, 0) > 0)
@@ -275,6 +304,7 @@ ZMK_SUBSCRIPTION(processor_temp_layer, zmk_keycode_state_changed);
         .excluded_positions = excluded_positions_##n,                                              \
         .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
     };                                                                                             \
+    TEMP_LAYER_LAYER_LISTENER(n);                                                                  \
     DEVICE_DT_INST_DEFINE(n, temp_layer_init, NULL, &processor_temp_layer_data_##n,                \
                           &processor_temp_layer_config_##n, POST_KERNEL,                           \
                           CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &temp_layer_driver_api);
