@@ -104,6 +104,8 @@ static void layer_action_work_cb(struct k_work *work) {
         if (!action.activate) {
             if (zmk_keymap_layer_active(action.layer)) {
                 update_layer_state(&data->state, false);
+            } else {
+                data->state.is_active = false;
             }
         } else {
             update_layer_state(&data->state, true);
