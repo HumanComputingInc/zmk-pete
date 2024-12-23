@@ -60,7 +60,7 @@ static bool position_is_excluded(const struct temp_layer_config *config, uint32_
 /* Timing Check */
 static bool should_quick_tap(const struct temp_layer_config *config, int64_t last_tapped,
                              int64_t current_time) {
-    return (last_tapped + config->require_prior_idle_ms) > current_time;
+    return (last_tapped) > current_time;
 }
 
 /* Layer State Management */
